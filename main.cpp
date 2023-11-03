@@ -36,6 +36,10 @@ struct sphere_t {
     point_t centre;
     float r;
     struct color_t color;
+    float Ka;
+    float Ks;
+    float Kd;
+    float reflect;
     };
 struct hit_t {
     int hit;
@@ -103,6 +107,24 @@ vec_t normalise(vec_t v)
     return result;
 }
 
+color_t addColor(color_t a, color_t b)
+//adds two colors
+{
+    a.r += b.r;
+    a.g += b.g;
+    a.b += b.b;
+    return a;
+}
+
+color_t scaleColor(float x, color_t c)
+//multiplies color c by float x
+{
+    c.r *= x;
+    c.g *= x;
+    c.b *= x;
+    return c;
+}
+
 hit_t traceObj(point_t src, vec_t dir, sphere_t obj)
 //determines if sphere obj is visible from source point src and the distance of the hit point
 {
@@ -164,39 +186,43 @@ color_t shadeObj(point_t src, float hDist, vec_t direction, sphere_t obj, sphere
     if(dot(N,H)<0)
         return {0,0,0};
 
+    color_t resultColor;
+    resultColor.r=0;
+	resultColor.g=0;
+	resultColor.b=0;
+
+    //ambient: object color * ambient of object
+    color_t ambientLight = scaleColor(obj.Ka, obj.color);
+
+    //diffuse: color of light at P: ((light color * light brightness) / square of L's length) * diffuse of object
+    color_t diffuseLight;
+    diffuseLight = scaleColor(obj.Kd, scaleColor((light.brightness/dot(L,L)), light.col));
+    if (diffuseLight.r > 1)
+        diffuseLight.r = 1;
+    if (diffuseLight.g > 1)
+        diffuseLight.g = 1;
+    if (diffuseLight.b > 1)
+        diffuseLight.b = 1;
+
+    //specular: how close surface normal is to optimal reflection angle * specular of obj
+    color_t specHighlight;
+    specHighlight = scaleColor(obj.Ks, scaleColor(pow(dot(N,H),2), obj.color));
+
     //reflections
     color_t RColor = {1,1,1};
     if (repeat == 0){
-    vec_t Cv = vectorScale(dot(V,N), N);
-    vec_t Rv = vecSub(vectorScale(2,Cv), V);
+    vec_t Vv = normalise(pointSub(src,P)); //hit point to camera
+    vec_t Cv = vectorScale(dot(Vv,N), N);
+    vec_t Rv = vecSub(vectorScale(2,Cv), Vv);
     hit_t Rh = traceScene(P,Rv,spheres);
-    RColor = shadeObj(P, Rh.dist, Rv, Rh.obj, spheres, light, 1);
+    RColor = scaleColor(obj.reflect, shadeObj(P, Rh.dist, Rv, Rh.obj, spheres, light, 1));
     }
 
-    //base color of light at P: (light color * light brightness) / square of L's length
-    color_t incidentLight;
-    incidentLight.r = light.col.r*light.brightness/dot(L,L);
-    if (incidentLight.r > 1)
-        incidentLight.r = 1;
-    incidentLight.g = light.col.g*light.brightness/dot(L,L);
-    if (incidentLight.g > 1)
-        incidentLight.g = 1;
-    incidentLight.b = light.col.b*light.brightness/dot(L,L);
-    if (incidentLight.b > 1)
-        incidentLight.b = 1;
-    
-    //how close surface normal is to optimal reflection angle
-    color_t reflectivity;
-    reflectivity.r = dot(N,H)*obj.color.r;
-    reflectivity.g = dot(N,H)*obj.color.g;
-    reflectivity.b = dot(N,H)*obj.color.b;
-
     //product of all shading
-    color_t resultLight;
-    resultLight.r = incidentLight.r * reflectivity.r + RColor.r;
-    resultLight.g = incidentLight.g * reflectivity.g + RColor.g;
-    resultLight.b = incidentLight.b * reflectivity.b + RColor.b;
-    return resultLight;
+    resultColor.r = ambientLight.r + diffuseLight.r + specHighlight.r + RColor.r;
+    resultColor.g = ambientLight.g + diffuseLight.g + specHighlight.g + RColor.g;
+    resultColor.b = ambientLight.b + diffuseLight.b + specHighlight.b + RColor.b;
+    return resultColor;
 }
 
 void drawScene(SDL_Renderer *renderer, int WindowWidth, int WindowHeight, point_t src, sphere_t *spheres, light_t light)
@@ -237,10 +263,10 @@ auto main() -> int
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
     SDL_RenderClear(renderer);
     point_t cameraPos = {0,0,0};
-    sphere_t spheres[] = { {0,{-5,0,30},10,{255,0,0}},
-                           {1,{0,10,40},12,{0,255,0}},
-                           {2,{10,-10,30},8,{0,0,255}},
-                           {3,{0,0,0},0,{0,0,0}}};  
+    sphere_t spheres[] = { {0,{-5,0,30},10,{255,25,25}, 0.1, 0.8, 0.8, 0.5},
+                           {1,{0,10,40},12,{25,255,25}, 0.1, 0.8, 0.8, 0.5},
+                           {2,{10,-10,30},8,{25,25,255}, 0.1, 0.8, 0.8, 0.5},
+                           {3,{0,0,0},0,{0,0,0}, 0, 0, 0, 0}};  
     light_t light = {{5,0,10},{255,255,255},1};
     drawScene(renderer, WindowWidth, WindowHeight, cameraPos, spheres, light);
     int selectedSphere = 0;
