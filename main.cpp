@@ -8,6 +8,8 @@
 #include <cmath>
 #include <math.h>
 #include <SDL_image.h>
+#include <assert.h>
+#include <chrono>
 const int focalLength = 500;
 
 void putPixel(SDL_Renderer *renderer, float x, float y, unsigned char r, unsigned char g, unsigned char b)
@@ -292,6 +294,8 @@ color_t shadeObj(point_t src, float hDist, vec_t direction, obj_t *obj, obj_t *o
 void drawScene(SDL_Renderer *renderer, int WindowWidth, int WindowHeight, point_t src, obj_t *objects, light_t light)
 //draws closest object for each pixel in window
 {
+    auto start = std::chrono::high_resolution_clock::now(); // capture start time
+
     float x;
     float y;
     vec_t direction;
@@ -306,7 +310,43 @@ void drawScene(SDL_Renderer *renderer, int WindowWidth, int WindowHeight, point_
                 putPixel(renderer,x,y, lightColor.r, lightColor.g, lightColor.b);
             }
         }
+        printf("%f \n", x/WindowWidth*100); //percentage progress
     }
+    auto end = std::chrono::high_resolution_clock::now(); // capture end time
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start); // calculate render time in microseconds
+    std::cout << "Render took " << duration.count()/1000000 << " seconds to complete" << std::endl;
+}
+
+obj_t objects[99999];
+obj_t* initialiseObjects(obj_t* objects)
+{
+    //object.txt file to be read
+    int objCount = 0;
+    //FILE *fp=fopen("object.txt","r");
+    //FILE *fp=fopen("objectHeavy.txt","r");
+    FILE *fp=fopen("objectLite.txt","r");
+    
+    //scan object.txt file for vertices and add other values
+    assert(fp);
+    while(fscanf(fp,"%f,%f,%f %f,%f,%f %f,%f,%f\n",
+        &objects[objCount].p1.x, &objects[objCount].p1.y, &objects[objCount].p1.z,
+        &objects[objCount].p2.x, &objects[objCount].p2.y, &objects[objCount].p2.z,
+        &objects[objCount].p3.x, &objects[objCount].p3.y, &objects[objCount].p3.z
+        )==9)
+    {
+    objects[objCount].index = objCount;
+    objects[objCount].r = 1; //radius of 1 added as loop terminates when radius is 0
+    objects[objCount].traceObj = traceTriangle;
+    objects[objCount].surfaceNormal = surfNormTriangle;
+    objects[objCount].color = {255,25,25};
+    objects[objCount].Ka = 0.1;
+    objects[objCount].Ks = 0.8;
+    objects[objCount].Kd = 0.8;
+    objects[objCount].reflect = 0.5;
+    objCount++;
+    }
+    objects[objCount] = {objCount,NULL,NULL,{0,0,0},0,{0,0,0},{0,0,0},{0,0,0},{0,0,0}, 0, 0, 0, 0}; //terminating object
+    return objects;
 }
 
 auto main() -> int
@@ -316,7 +356,6 @@ auto main() -> int
     SDL_Event event;
     SDL_Renderer *renderer;
     SDL_Window *window;
-    SDL_Surface* pScreenShot = SDL_CreateRGBSurface(0, WindowWidth, WindowHeight, 32, 0x00ff0000, 0x0000ff00, 0x000000ff, 0xff000000);
     std::random_device rd;
     SDL_Init(SDL_INIT_VIDEO);
     SDL_CreateWindowAndRenderer(WindowWidth, WindowHeight, 0, &window, &renderer);
@@ -325,16 +364,12 @@ auto main() -> int
     bool quit = false;
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
     SDL_RenderClear(renderer);
+
     point_t cameraPos = {0,0,0};
-    obj_t objects[] = { {0,traceSphere,surfNormSphere,{-6,-4,30},10,{0,0,0},{0,0,0},{0,0,0},{255,25,25}, 0.1, 0.8, 0.8, 0.5},
-                        {1,traceSphere,surfNormSphere,{12,10,25},5,{0,0,0},{0,0,0},{0,0,0},{25,255,25}, 0.1, 0.8, 0.8, 0.5},
-                        {2,traceSphere,surfNormSphere,{10,-10,30},8,{0,0,0},{0,0,0},{0,0,0},{25,25,255}, 0.1, 0.8, 0.8, 0.5},
-                        {3,traceTriangle,surfNormTriangle,{-5,0,0},1,{-5,5,30},{10,5,30},{5,15,30},{155,155,155}, 0.1, 0.8, 0.8, 0.5},
-                        {4,traceTriangle,surfNormTriangle,{-5,0,0},1,{-5,5,20},{10,5,30},{0,15,30},{155,155,155}, 0.1, 0.8, 0.8, 0.5},
-                        {5,NULL,NULL,{0,0,0},0,{0,0,0},{0,0,0},{0,0,0},{0,0,0}, 0, 0, 0, 0}};
     light_t light = {{-5,0,10},{255,255,255},1};
+    initialiseObjects(objects);
     drawScene(renderer, WindowWidth, WindowHeight, cameraPos, objects, light);
-    int selectedObject = 0;
+    
     //render
     while (!quit)
     {
@@ -347,20 +382,6 @@ auto main() -> int
             case SDL_QUIT:
                 quit = true;
                 break;
-            // select object with mouse
-            case SDL_MOUSEBUTTONDOWN:
-            {
-                int x, y;
-                SDL_GetMouseState( &x, &y );
-                vec_t direction = normalise({(float)x-WindowWidth/2,(float)y-WindowHeight/2,focalLength});
-                hit_t closestHit = traceScene(cameraPos, direction, objects);
-                if (closestHit.hit)
-                {
-                    selectedObject = closestHit.obj->index;
-                    printf("%d \n", selectedObject);
-                }
-                break;
-            }
             // now we look for a keydown event
             case SDL_KEYDOWN:
             {
@@ -369,83 +390,6 @@ auto main() -> int
                 // if it's the escape key quit
                 case SDLK_ESCAPE:
                     quit = true;
-                    break;
-                // if p screenshot
-                case SDLK_p:
-                    if(pScreenShot)
-                    {
-                        // Read the pixels from the current render target and save them onto the surface
-                        SDL_RenderReadPixels(renderer, NULL, SDL_GetWindowPixelFormat(window), pScreenShot->pixels, pScreenShot->pitch);
-
-                        // Create the bmp screenshot file
-                        SDL_SaveBMP(pScreenShot, "Screenshot.bmp");
-                        // Destroy the screenshot surface
-                        SDL_FreeSurface(pScreenShot);
-                    }
-                    break;
-                //move selected object
-                case SDLK_d:
-                    objects[selectedObject].centre.x++;
-                    objects[selectedObject].p1.x++;
-                    objects[selectedObject].p2.x++;
-                    objects[selectedObject].p3.x++;
-                    break;
-                case SDLK_a:
-                    objects[selectedObject].centre.x--;
-                    objects[selectedObject].p1.x--;
-                    objects[selectedObject].p2.x--;
-                    objects[selectedObject].p3.x--;
-                    break;
-                case SDLK_w:
-                    objects[selectedObject].centre.y--;
-                    objects[selectedObject].p1.y--;
-                    objects[selectedObject].p2.y--;
-                    objects[selectedObject].p3.y--;
-                    break;
-                case SDLK_s:
-                    objects[selectedObject].centre.y++;
-                    objects[selectedObject].p1.y++;
-                    objects[selectedObject].p2.y++;
-                    objects[selectedObject].p3.y++;
-                    break;
-                case SDLK_q:
-                    objects[selectedObject].centre.z--;
-                    objects[selectedObject].p1.z--;
-                    objects[selectedObject].p2.z--;
-                    objects[selectedObject].p3.z--;
-                    break;
-                case SDLK_e:
-                    objects[selectedObject].centre.z++;
-                    objects[selectedObject].p1.z++;
-                    objects[selectedObject].p2.z++;
-                    objects[selectedObject].p3.z++;
-                    break;
-                case SDLK_z:
-                    objects[selectedObject].r--;
-                    break;
-                case SDLK_c:
-                    objects[selectedObject].r++;
-                    break; 
-                //move camera
-                case SDLK_UP:
-                    cameraPos.y--;
-                    break;
-                case SDLK_DOWN:
-                    cameraPos.y++;
-                    break;
-                case SDLK_RIGHT:
-                    cameraPos.x++;
-                    break;
-                case SDLK_LEFT:
-                    cameraPos.x--;
-                    break;
-                case SDLK_COMMA:
-                    cameraPos.z--;
-                    break;
-                case SDLK_PERIOD:
-                    cameraPos.z++;
-                    break;
-                default:
                     break;
                 } 
                 SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
