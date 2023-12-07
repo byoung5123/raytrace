@@ -12,8 +12,8 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS ON)
 
-add_executable(light)
-target_sources(light PRIVATE main.cpp )
-target_compile_options(light PRIVATE -Wall -Wextra -Wpedantic -Werror)
-target_link_libraries(light PRIVATE  SDL2::SDL2 SDL2::SDL2main )
+add_executable(raytrace)
+target_sources(raytrace PRIVATE main.cpp )
+target_compile_options(raytrace PRIVATE -Wall -Wextra -Wpedantic -Werror)
+target_link_libraries(raytrace PRIVATE  SDL2::SDL2 SDL2::SDL2main )
 
