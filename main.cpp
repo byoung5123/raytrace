@@ -7,7 +7,6 @@
 #include <random>
 #include <cmath>
 #include <math.h>
-#include <SDL_image.h>
 #include <assert.h>
 #include <chrono>
 const int focalLength = 500;
